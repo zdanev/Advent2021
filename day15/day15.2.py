@@ -16,9 +16,9 @@ def read_input():
 def init():
     global risk
     risk = []
-    for i in range(n*5):
+    for i in range(n):
         r = []
-        for j in range(n*5):
+        for j in range(n):
             r.append(0)
         risk.append(r)
 
