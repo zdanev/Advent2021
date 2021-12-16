@@ -12,100 +12,135 @@ def hex2bin(hex: str) -> str:
 def bin2int(b: str) -> int:
     return int(b, 2)
 
-def parse(packet: str):
-    print("hex: " + packet)
-    packet_bin = hex2bin(packet)
-    print("bin: " + packet_bin)
-    parse_packet(packet_bin)
+packet_bin = ""
+index = 0
+def get_token(len: int) -> str:
+    global index
+    token = packet_bin[index:index+len]
+    index += len
+    return token
 
-def parse_packet(q: str) -> int:
-    print("parse packet: " + q)
-    global sum_ver
-
-    ver = q[0:3]
-    veri = bin2int(ver)
-    sum_ver += veri
-    print("ver: " + ver + " " + str(veri))
-    
-    type = q[3:6]
-    typei = bin2int(type)
-    print("type: " + type + " " + str(typei))
-
-    if typei == 4:
-        len = parse_literal(q[6:])
-    else: 
-        len = parse_operator(q[6:])
-
-    return len + 6
-
-def parse_literal(q: str) -> int:
-    print("parse literal: " + q)
-    literal = ""
-    i = 0
-    while (True):
-        i += 1
-        s = q[0:5]
-        literal += s[1:]
-        q = q[5:]
-        if s[0] == "0": break
-    print("literal: " + literal)
-    return i * 5
-
-def parse_operator(q: str):
-    print("parse operator: " + q)
-    i = q[0]
-    print("i: " + i)
-    len = 1
-
-    if i == "0": # by length
-        l = q[1:16]
-        li = bin2int(l)
-        print("l: " + l + " " + str(li))
-        len += 15
-        sub = q[16:16 + li]
-        print("sub: " + sub)
-        while li > 0:
-            subl = parse_packet(sub)
-            sub = sub[subl:]
-            len += subl
-            li -= subl
-    else: # by count
-        n = q[1:12]
-        ni = bin2int(n)
-        print("n: " + n + " " + str(ni))
-        len += 11
-        sub = q[12:]
-        for i in range(ni):
-            print(f"sub {i+1}/{ni}")
-            l = parse_packet(sub)
-            sub = sub[l:]
-            len += l
-
-    return len
+def get_int_token(len: int) -> int:
+    return bin2int(get_token(len))
 
 sum_ver = 0
+def parse(packet: str):
+    global packet_bin, index, sum_ver
+    print("hex", packet)
+    packet_bin = hex2bin(packet)
+    index = 0
+    sum_ver = 0
+    # print("bin: ", packet_bin)
 
-# literal
-#parse("D2FE28")
+    result = parse_packet()
 
-# operator (2 subpackets: literals)
-# parse("38006F45291200")
+    print()
+    print("sum_ver", sum_ver)
+    print("result", result)
 
-# op(3 li)
-# parse("EE00D40C823060")
+def get_aggregate(type: int) -> str:
+    if type == 0: aggregate = "+"
+    elif type == 1: aggregate = "*"
+    elif type == 2: aggregate = "min"
+    elif type == 3: aggregate = "max"
+    elif type == 5: aggregate = "gt"
+    elif type == 6: aggregate = "lt"
+    elif type == 7: aggregate = "eq"
+    return aggregate
 
-# op(op(op(li))) -> 16
-# parse("8A004A801A8002F478")
+def cacl_aggregate(aggregate: str, data: list) -> int:
+    if aggregate == "+":
+        return sum(data)
+    if aggregate == "*":
+        result = 1
+        for x in data: result *= x
+        return result
+    if aggregate == "min":
+        result = data[0]
+        for x in data: 
+            if x < result: result = x
+        return result
+    if aggregate == "max":
+        result = data[0]
+        for x in data: 
+            if x > result: result = x
+        return result
+    if aggregate == "gt":
+        if data[0] > data[1]: return 1
+        else: return 0
+    if aggregate == "lt":
+        if data[0] < data[1]: return 1
+        else: return 0
+    if aggregate == "eq":
+        if data[0] == data[1]: return 1
+        else: return 0
 
-# op(op(2 li), op(2 li)) -> 12
-# parse("620080001611562C8802118E34")
+def parse_packet() -> int:
+    global sum_ver
+    sum_ver += get_int_token(3)
 
-# op(op(2 li), op(2 li)) -> 23
-# parse("C0015000016115A2E0802F182340")
+    type = get_int_token(3)
+    if type == 4:
+        result = parse_literal()
+    else:
+        aggregate = get_aggregate(type)
+        print("(" + aggregate + " ", end="")
+        results = parse_operator()
+        print(")", end="") 
+        result = cacl_aggregate(aggregate, results)
+    
+    return result
 
-# op(op(op(5 li))) -> 31
-# parse("A0016C880162017C3686B18A3D4780")
+def parse_literal() -> int:
+    flag = True
+    result = 0
+    while flag:
+        flag = get_int_token(1) == 1
+        token = get_int_token(4)
+        result = result * 16 + token
+    print(f"[{result}]", end="")
+    return result
+
+def parse_operator():
+    result = []
+
+    id = get_int_token(1)
+    if id == 0: # by length
+        len = get_int_token(15)
+        target_index = index + len
+        while index < target_index:
+            sub = parse_packet()
+            result.append(sub)
+    else: # by count
+        n = get_int_token(11)
+        for i in range(n):
+            sub = parse_packet()
+            result.append(sub)
+
+    return result
+
+# [2021]=2021 sum_ver=6
+parse("D2FE28")
+
+# (+ [1][2])=3 sum_ver=14
+parse("C200B40A82")
+
+# (lt [10][20])=1 sum_ver=9
+parse("38006F45291200")
+
+# (max [1][2][3])=3 sum_ver=14
+parse("EE00D40C823060")
+
+# (min(min(min(15))))=15 sum_ver=16
+parse("8A004A801A8002F478")
+
+# (+ (+ [10][11]) (+ [12][13]))=46 sum_ver=12
+parse("620080001611562C8802118E34")
+
+# (+ (+ [10][11]) (+ [12][13]))=46 sum_ver=23
+parse("C0015000016115A2E0802F182340")
+
+# (+ (+ (+ [6][6][12][15][15])))=54 sum_ver=31
+parse("A0016C880162017C3686B18A3D4780")
 
 parse(packet)
-
-print(sum_ver)
