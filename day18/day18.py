@@ -30,7 +30,7 @@ class Pair:
             and self.a.is_literal() \
             and self.b.is_literal()
 
-    def explode(self):
+    def explode(self) -> bool:
         q = self.traverse()
 
         ex = None
@@ -39,28 +39,55 @@ class Pair:
                 ex = p
                 break
 
-        if ex is not None:
-            q.remove(ex.a)
-            q.remove(ex.b)
+        if ex is None: return False
 
-            prev = None
-            next = None
-            for x in q:
-                if x.is_literal() and next is not None:
-                    x.a += next
-                    break
-                if x == ex:
-                    next = ex.b.a
-                    if prev is not None:
-                        prev.a += ex.a.a
-                if x.is_literal(): 
-                    prev = x
+        q.remove(ex.a)
+        q.remove(ex.b)
 
-            ex.a = 0
-            ex.b = None
+        prev = None
+        next = None
+        for x in q:
+            if x.is_literal() and next is not None:
+                x.a += next
+                break
+            if x == ex:
+                next = ex.b.a
+                if prev is not None:
+                    prev.a += ex.a.a
+            if x.is_literal(): 
+                prev = x
+
+        ex.a = 0
+        ex.b = None
+        return True
+
+    def split(self) -> bool:
+        q = self.traverse()
+        for x in q:
+            if x.is_literal() and x.a >= 10:
+                x.b = Pair(x.a - x.a // 2)
+                x.a = Pair(x.a // 2)
+                return True
+        return False
+
+    def reduce(self):
+        # while (self.explode() or self.split()): pass
+        while True:
+            # print(self)
+            if self.explode(): continue
+            if self.split(): continue
+            break
 
     def add(self, p):
-        return Pair(self, p)
+        result = Pair(self, p)
+        result.reduce()
+        return result
+
+    def magnitude(self) -> int:
+        if self.is_literal():
+            return self.a
+        else:
+            return 3 * self.a.magnitude() + 2 * self.b.magnitude()
 
     def __str__(self) -> str:
         if self.is_literal():
@@ -95,39 +122,23 @@ class Parser:
         else:
             return Pair(int(token))
 
-### TESTS ###
+with open('day18/input.txt') as f:
+    lines = f.readlines()
 
-print(Parser("[1,[2,3]]").parse())
+sum = None
+for line in lines:
+    n = Parser(line).parse()
+    if sum is None:
+        sum = n
+    else:
+        sum = sum.add(n)
+print(sum.magnitude())
 
-# [[1,9],[8,5]] + [9,[8,7]] -> [[[1,9],[8,5]],[9,[8,7]]]
-print(Parser("[[1,9],[8,5]]").parse().add(Parser("[9,[8,7]]").parse()))
-
-# [[[[[9,8],1],2],3],4] -> [[[[0,9],2],3],4]
-p = Parser("[[[[[9,8],1],2],3],4]").parse()
-print(p)
-p.explode()
-print(p)
-
-# [7,[6,[5,[4,[3,2]]]]] -> [7,[6,[5,[7,0]]]]
-p = Parser("[7,[6,[5,[4,[3,2]]]]]").parse()
-print(p)
-p.explode()
-print(p)
-
-# [[6,[5,[4,[3,2]]]],1] -> [[6,[5,[7,0]]],3]
-p = Parser("[[6,[5,[4,[3,2]]]],1]").parse()
-print(p)
-p.explode()
-print(p)
-
-# [[3,[2,[1,[7,3]]]],[6,[5,[4,[3,2]]]]] -> [[3,[2,[8,0]]],[9,[5,[4,[3,2]]]]]
-p = Parser("[[3,[2,[1,[7,3]]]],[6,[5,[4,[3,2]]]]]").parse()
-print(p)
-p.explode()
-print(p)
-
-# [[3,[2,[8,0]]],[9,[5,[4,[3,2]]]]] -> [[3,[2,[8,0]]],[9,[5,[7,0]]]]
-p = Parser("[[3,[2,[8,0]]],[9,[5,[4,[3,2]]]]]").parse()
-print(p)
-p.explode()
-print(p)
+max = 0
+for i in range(len(lines)):
+    for j in range(len(lines)):
+        a = Parser(lines[i]).parse()
+        b = Parser(lines[j]).parse()
+        m = a.add(b).magnitude()
+        if m > max: max = m
+print(max)
